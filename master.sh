@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#Todo: Problematica: Como podemos conectarnos a los Workers distribuidos, desde Nginx. y solo tener acceso a ellos.
+
 declare -A ips
 declare -A containers
 all_ips=""
@@ -40,12 +42,8 @@ NODE_SRV=$!
 
 SLEEP_TIME=3
 for key in "${!containers[@]}"; do
-  # Sacar solo el número (por ejemplo, de 'ip1' -> '1')
   index="${key//c/}"
   container="${containers[c$index]}"
-
-  #TEngo que hacer que ejecute un Script y se mantenga en escucha, compruebe que el servicio esta corriendo y si cae que lo levante nuevamente. en otra ubicacion,
-  #
 
   echo -n "nc escuchando: "
   echo 900"$index"
@@ -59,11 +57,10 @@ for key in "${!containers[@]}"; do
 
   echo "" > input-wrk[$key]
   echo "" > tmp
-  # Ejecutar nc con entrada de tail y salida a tee que escribe en output y en fifo
+  # Ejecutar nc con entrada de tail y salida a tee que escribe en output
   tail -f "input-wrk[$key]" | nc -lnv 900"$index" 2> tmp | tee "output-wrk[$key]" &
   NC_PID=$!
-  # Ejecuta el comando y recibe la salida
-  #PUUEDO CAPTUURAR LA IP QUE SE CONECTO A LA SESION,
+  #Capturamos LA IP QUE SE CONECTO A LA SESION,
   while true; do
     line=$(tail -n 1 tmp)
     if [[ $line == *"Connection received"* ]]; then
@@ -74,9 +71,9 @@ for key in "${!containers[@]}"; do
     fi
   done
   echo "IP: $ip";
+  #Agregamos las IPS permitidas para el servidor de descarga
   all_ips+="$ip "
 
-  # Ejecuta el comando y recibe la salida
 done
 
 echo "all_ips: $all_ips";
@@ -91,6 +88,7 @@ for key in "${!containers[@]}"; do
   WORKER="ip=\"$ip\" c=\"$container\""
   echo -e "${GREEN}$WORKER${RESET}"
   CMD="{ wget -q --server-response http://$LOCAL_IP:8000/worker.sh -O worker.sh && chmod +x worker.sh &&  ./worker.sh "$WORKER" IPS="$LOCAL_IP" } > logs 2>&1 &"
+  # Ejecuta el comando en el Worker
   echo "$CMD" > "input-wrk[$key]" #SI le agrego un & a CMD lo dejo en segundo plano y puedo seguir ejecutando cosas. de todas formas finalizara su proceso enviandome su ultimo estado.
 
   echo -e "${BLUE}El PID de nc es: $NC_PID${RESET}"
@@ -98,6 +96,10 @@ done
 
 
 
+
+#Escuchamos constantemente a los Workers conectados
+
+#Todo: en caso de que un Worker muera debemos quitarlo de la red.
 while true; do
     # Listar todas las IPs y contenedores ordenados por índice
     for key in "${!containers[@]}"; do
